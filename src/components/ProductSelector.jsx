@@ -8,6 +8,11 @@ const ProductSelector = () => {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [quantities, setQuantities] = useState({});
 
+
+// const formattedProducts = apiProducts.map(p => ({
+//   ...p,
+//   quantity: p.stock
+// }));
   // Get unique categories
   const categories = ['All', ...new Set(products.map(p => p.category).filter(Boolean))];
 
@@ -15,7 +20,7 @@ const ProductSelector = () => {
   const filteredProducts = products.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'All' || product.category === selectedCategory;
-    return matchesSearch && matchesCategory && product.quantity > 0;
+    return matchesSearch && matchesCategory && product.stock > 0;
   });
 
   const handleQuantityChange = (productId, value) => {
@@ -80,7 +85,7 @@ const ProductSelector = () => {
                     {formatCurrency(product.price)}
                   </span>
                   <span className={`text-sm ${product.quantity < 5 ? 'text-danger-600 font-medium' : 'text-gray-600'}`}>
-                    Stock: {product.quantity}
+                    Stock: {product.stock}
                   </span>
                 </div>
               </div>
@@ -89,7 +94,7 @@ const ProductSelector = () => {
                 <input
                   type="number"
                   min="1"
-                  max={product.quantity}
+                  max={product.stock}
                   value={quantities[product.id] || 1}
                   onChange={(e) => handleQuantityChange(product.id, e.target.value)}
                   className="w-20 px-2 py-1 border border-gray-300 rounded text-center text-sm"

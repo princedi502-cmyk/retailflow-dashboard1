@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { formatCurrency, calculateCartTotal } from '../utils/helpers';
+import { createOrder, getProducts } from "../services/api"; // 1. Import the API service
 
 const BillingCart = ({ onSaleComplete }) => {
-  const { cart, updateCartItem, removeFromCart, clearCart, confirmSale } = useAppContext();
+  // Added 'cart' and 'clearCart' from context
+  const { cart, updateCartItem, removeFromCart, clearCart } = useAppContext();
   const [isProcessing, setIsProcessing] = useState(false);
 
   const handleQuantityChange = (productId, newQuantity) => {
     if (newQuantity < 1) return;
-    
     try {
       updateCartItem(productId, newQuantity);
     } catch (error) {
@@ -16,6 +17,7 @@ const BillingCart = ({ onSaleComplete }) => {
     }
   };
 
+  // 2. Updated to use the new Async Backend logic
   const handleConfirmSale = async () => {
     if (cart.length === 0) {
       alert('Cart is empty');
@@ -28,13 +30,31 @@ const BillingCart = ({ onSaleComplete }) => {
 
     setIsProcessing(true);
     try {
-      const sale = confirmSale('employee');
-      alert(`Sale completed successfully! Sale ID: ${sale.saleId.substring(0, 8)}`);
-      if (onSaleComplete) {
-        onSaleComplete(sale);
+      const token = localStorage.getItem("retailflow_token")
+
+      // 3. Map local cart items to the format the backend expects (barcode + quantity)
+      const order = {
+        items: cart.map(item => ({
+          barcode: item.barcode, // Ensure your context products have a barcode field
+          quantity: item.quantity
+        }))
+      };
+
+      const result = await createOrder(order, token);
+
+      if (result) {
+        alert(`Sale completed successfully!`);
+        clearCart(); // Clear local UI cart after successful DB entry
+        
+        await getProducts() 
+
+        if (onSaleComplete) {
+          onSaleComplete(result);
+        }
       }
     } catch (error) {
-      alert(`Sale failed: ${error.message}`);
+      console.error("Order error:", error);
+      alert(`Sale failed: ${error.response?.data?.message || error.message}`);
     } finally {
       setIsProcessing(false);
     }
@@ -59,7 +79,7 @@ const BillingCart = ({ onSaleComplete }) => {
         </div>
       ) : (
         <>
-          {/* Cart Items */}
+          {/* Cart Items List */}
           <div className="space-y-3 mb-6 max-h-64 overflow-y-auto">
             {cart.map(item => (
               <div
@@ -78,7 +98,7 @@ const BillingCart = ({ onSaleComplete }) => {
                     <button
                       onClick={() => handleQuantityChange(item.productId, item.quantity - 1)}
                       className="px-2 py-1 hover:bg-gray-100"
-                      disabled={item.quantity <= 1}
+                      disabled={item.quantity <= 1 || isProcessing}
                     >
                       −
                     </button>
@@ -88,7 +108,7 @@ const BillingCart = ({ onSaleComplete }) => {
                     <button
                       onClick={() => handleQuantityChange(item.productId, item.quantity + 1)}
                       className="px-2 py-1 hover:bg-gray-100"
-                      disabled={item.quantity >= item.availableStock}
+                      disabled={item.quantity >= item.availableStock || isProcessing}
                     >
                       +
                     </button>
@@ -98,6 +118,7 @@ const BillingCart = ({ onSaleComplete }) => {
                     onClick={() => removeFromCart(item.productId)}
                     className="text-danger-600 hover:text-danger-700 px-2"
                     title="Remove item"
+                    disabled={isProcessing}
                   >
                     🗑️
                   </button>
@@ -106,7 +127,7 @@ const BillingCart = ({ onSaleComplete }) => {
             ))}
           </div>
 
-          {/* Total */}
+          {/* Total Calculation */}
           <div className="border-t border-gray-200 pt-4 mb-6">
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm text-gray-600">Subtotal:</span>
@@ -118,7 +139,6 @@ const BillingCart = ({ onSaleComplete }) => {
             </div>
           </div>
 
-          {/* Actions */}
           <div className="flex gap-3">
             <button
               onClick={handleClearCart}

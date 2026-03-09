@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import DashboardLayout from '../layouts/DashboardLayout';
 import KPICard from '../components/KPICard';
 import DataTable from '../components/DataTable';
@@ -8,13 +8,32 @@ import DoughnutChart from '../components/DoughnutChart';
 import ProductModal from '../components/ProductModal';
 import { useAppContext } from '../context/AppContext';
 import { isThisMonth, formatCurrency, isLowStock } from '../utils/helpers';
+import { getAnalytics } from "../services/api";
+
 
 const OwnerDashboard = () => {
   const { products, sales, addProduct, updateProduct, deleteProduct } = useAppContext();
+  const safeProducts = Array.isArray(products) ? products : [];
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [modalMode, setModalMode] = useState('add');
+  const [revenue, setRevenue] = useState(0);
 
+
+  useEffect(() => {
+  const token = localStorage.getItem("retailflow_token");
+
+  const fetchAnalytics = async () => {
+    try {
+      const data = await getAnalytics(token);
+      setRevenue(data.total_revenue);
+    } catch (error) {
+      console.error("Analytics fetch failed", error);
+    }
+  };
+
+  fetchAnalytics();
+}, []);
   // Calculate KPIs from real data
   const kpis = useMemo(() => {
     const monthlySales = sales.filter(sale => isThisMonth(sale.dateTime));
@@ -23,10 +42,10 @@ const OwnerDashboard = () => {
     const itemsSold = monthlySales.reduce((sum, sale) => {
       return sum + sale.items.reduce((s, item) => s + item.quantity, 0);
     }, 0);
-    const lowStockCount = products.filter(isLowStock).length;
+    const lowStockCount = safeProducts.filter(isLowStock).length;
     
     // Calculate inventory health (percentage of products with sufficient stock)
-    const healthyProducts = products.filter(p => p.quantity >= 10).length;
+    const healthyProducts = safeProducts.filter(p => p.quantity >= 10).length;
     const inventoryHealth = products.length > 0 
       ? Math.round((healthyProducts / products.length) * 100) 
       : 0;
@@ -58,7 +77,7 @@ const OwnerDashboard = () => {
     });
 
     const salesArray = Object.entries(productSales).map(([id, data]) => {
-      const product = products.find(p => p.id === id);
+      const product = safeProducts.find(p => p.id === id);
       return {
         id,
         name: data.name,
@@ -108,7 +127,7 @@ const OwnerDashboard = () => {
     const categorySales = {};
     sales.forEach(sale => {
       sale.items.forEach(item => {
-        const product = products.find(p => p.id === item.productId);
+        const product = safeProducts.find(p => p.id === item.productId);
         const category = product?.category || 'Other';
         categorySales[category] = (categorySales[category] || 0) + item.total;
       });
@@ -213,7 +232,7 @@ const OwnerDashboard = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
         <KPICard
           title="Monthly Revenue"
-          value={kpis.monthlyRevenue}
+          value={revenue}
           icon="💰"
           prefix="₹"
         />
@@ -277,7 +296,7 @@ const OwnerDashboard = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-100">
-                  {products.map((row, rowIndex) => (
+                  {safeProducts.map((row, rowIndex) => (
                     <tr key={rowIndex} className="hover:bg-gray-50 transition-colors duration-150">
                       {inventoryColumns.map((column, colIndex) => (
                         <td key={colIndex} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
