@@ -13,7 +13,7 @@ async def create_product(
     user=Depends(require_owner)
 ):
 
-    product_dict = product.dict()
+    product_dict = product.model_dump()
 
     result = await db_manager.db["products"].insert_one(product_dict)
 
@@ -81,3 +81,18 @@ async def delete_product(product_id: str, user=Depends(require_owner)):
         raise HTTPException(status_code=404, detail="Product not found")
 
     return {"message": "Product deleted"}
+
+@router.get("/barcode/{barcode}",response_model=ProductResponse)
+async def get_product(barcode: str, user=Depends(get_current_user)):
+    
+    product = await db_manager.db["products"].find_one({"barcode": str(barcode)})
+    
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    product["id"] = str(product["_id"])
+    product["barcode"] = str(product.get("_barcode", ""))
+    
+
+    return product
+
+

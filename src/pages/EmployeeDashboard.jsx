@@ -7,6 +7,7 @@ import BillingCart from '../components/BillingCart';
 import { useAppContext } from '../context/AppContext';
 import { isToday, isThisWeek } from '../utils/helpers';
 import { getProducts,getAnalytics } from "../services/api"; // Added API import
+import { Html5Qrcode } from "html5-qrcode";
 
 const EmployeeDashboard = () => {
   // Removed 'products' from useAppContext as it now comes from the backend
@@ -18,10 +19,12 @@ const EmployeeDashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [bestSellers, setBestSellers] = useState([])
   const [worstSellers, setWorstSellers] = useState([])
- const [kpiData, setKpiData] = useState({
+  const [kpiData, setKpiData] = useState({
   soldToday: 0,
   soldWeek: 0
 })
+  const [showScanner, setShowScanner] = useState(false)
+  const [scanner, setScanner] = useState(null)
 
 const [lowStockProducts, setLowStockProducts] = useState([])
   
@@ -48,6 +51,46 @@ const [lowStockProducts, setLowStockProducts] = useState([])
 
     fetchProducts();
   }, []);
+
+useEffect(() => {
+  if (!showScanner) return
+
+  const html5QrCode = new Html5Qrcode("reader")
+  setScanner(html5QrCode)
+
+  const config = {
+    fps: 10,
+    qrbox: { width: 250, height: 120 }
+  }
+
+  html5QrCode.start(
+    { facingMode: "environment" },
+    config,
+    (decodedText) => {
+      console.log("Scanned:", decodedText)
+
+      const product = products.find(
+        (p) => p.barcode === decodedText
+      )
+
+      if (product) {
+        alert(`Product Found: ${product.name}`)
+        // TODO connect to cart
+      } else {
+        alert("Product not found")
+      }
+    },
+    (error) => {}
+  )
+
+  return () => {
+    html5QrCode.stop().then(() => {
+      html5QrCode.clear()
+    })
+  }
+}, [showScanner, products])
+
+
 
   useEffect(() => {
   if (products.length > 0) {
@@ -79,21 +122,21 @@ const loadAnalytics = async () => {
     const bestData = await bestRes.json()
     const worstData = await worstRes.json()
 
-    const bestMapped = bestData.map((item, index) => ({
-      id: index + 1,
-      name: item._id,
-      unitsSold: item.total_sold,
-      category: "N/A",
-      stock: "N/A"
-    }))
+  const bestMapped = bestData.map((item, index) => ({
+  id: index + 1,
+  name: item.name,
+  unitsSold: item.unitsSold,
+  category: item.category || "N/A",
+  stock: Array.isArray(item.stock) ? item.stock[0] : item.stock
+}))
 
-    const worstMapped = worstData.map((item, index) => ({
-      id: index + 1,
-      name: item._id,
-      unitsSold: item.total_sold,
-      category: "N/A",
-      stock: "N/A"
-    }))
+const worstMapped = worstData.map((item, index) => ({
+  id: index + 1,
+  name: item.name,
+  unitsSold: item.unitsSold,
+  category: item.category || "N/A",
+  stock: Array.isArray(item.stock) ? item.stock[0] : item.stock
+}))
 
     setBestSellers(bestMapped)
     setWorstSellers(worstMapped)
@@ -201,11 +244,11 @@ useEffect(() => {
   loadLowStock()
 }, [])
   const productColumns = [
-    { label: '#', key: 'id' },
-    { label: 'Product Name', key: 'name' },
-    { label: 'Category', key: 'category' },
-    { label: 'Units Sold', key: 'unitsSold', render: (value) => value.toLocaleString() },
-    { label: 'Stock', key: 'stock', render: (value) => value.toLocaleString() },
+    { label: "#", key: "id" },
+  { label: "Product Name", key: "name" },
+  { label: "Category", key: "category" },
+  { label: "Units Sold", key: "unitsSold" },
+  { label: "Stock", key: "stock" }
   ];
 
   const handleSaleComplete = () => {
@@ -237,8 +280,45 @@ useEffect(() => {
 
 </div>
 
+<div className="flex flex-wrap gap-4 mb-10">
+  <button
+    onClick={() => setShowBilling(!showBilling)}
+    className="btn btn-primary"
+  >
+    <span className="mr-2">{showBilling ? "📊" : "➕"}</span>
+    {showBilling ? "Hide Billing" : "Create Bill"}
+  </button>
 
-      <div className="flex flex-wrap gap-4 mb-10">
+  {showBilling && (
+    <button
+      onClick={() => setShowScanner(!showScanner)}
+      className="btn btn-secondary bg-indigo-600 text-white"
+    >
+      <span className="mr-2">📷</span>
+      {showScanner ? "Close Scanner" : "Scan Barcode"}
+    </button>
+  )}
+</div>
+{showBilling && (
+  <div className="space-y-6 mb-10">
+
+    {showScanner && (
+      <div className="card p-4 bg-white shadow-md max-w-md mx-auto">
+        <div id="reader"></div>
+        <p className="text-center text-sm text-gray-500 mt-2">
+          Align barcode inside the box
+        </p>
+      </div>
+    )}
+
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <ProductSelector products={products} />
+      <BillingCart onSaleComplete={handleSaleComplete} />
+    </div>
+
+  </div>
+)}
+      {/* <div className="flex flex-wrap gap-4 mb-10">
         <button onClick={() => setShowBilling(!showBilling)} className="btn btn-primary">
           <span className="mr-2">{showBilling ? '📊' : '➕'}</span>
           {showBilling ? 'Hide Billing' : 'Create Bill'}
@@ -247,15 +327,16 @@ useEffect(() => {
           <span className="mr-2">📝</span>
           Request Stock Update
         </button>
-      </div>
-
-      {showBilling && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
+      </div> */}
+      
+      {/* {showBilling && ( */}
+        {/* // <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10"> */}
           {/* Ensure these components also receive the new products if they don't use context */}
-          <ProductSelector products={products} /> 
-          <BillingCart onSaleComplete={handleSaleComplete} />
-        </div>
-      )}
+          {/* <ProductSelector products={products} />  */}
+          {/* // <BillingCart onSaleComplete={handleSaleComplete} /> */}
+        {/* </div> */}
+      {/* )} */}
+      
 
       <div className="space-y-6">
         {isLoading ? (
@@ -287,7 +368,7 @@ useEffect(() => {
         columns={[
           { label: "Product", key: "name" },
           { label: "Category", key: "category" },
-          { label: "Stock Left", key: "quantity" }
+          { label: "Stock Left", key: "stock" }
         ]}
         data={lowStockProducts}
       />

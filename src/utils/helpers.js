@@ -63,9 +63,10 @@ export function calculateCartTotal(cart) {
 }
 
 // Format currency
-export function formatCurrency(amount) {
-  return '₹' + amount.toLocaleString('en-IN');
-}
+export const formatCurrency = (value) => {
+  if (!value) return "₹0";
+  return `₹${Number(value).toLocaleString("en-IN")}`;
+};
 
 // Format date and time
 export function formatDateTime(dateString) {

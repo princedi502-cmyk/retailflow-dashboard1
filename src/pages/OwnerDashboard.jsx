@@ -1,343 +1,342 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import DashboardLayout from '../layouts/DashboardLayout';
-import KPICard from '../components/KPICard';
-import DataTable from '../components/DataTable';
-import ChartCard from '../components/ChartCard';
-import LineChart from '../components/LineChart';
-import DoughnutChart from '../components/DoughnutChart';
-import ProductModal from '../components/ProductModal';
-import { useAppContext } from '../context/AppContext';
-import { isThisMonth, formatCurrency, isLowStock } from '../utils/helpers';
-import { getAnalytics } from "../services/api";
+import React, { useState, useEffect, useMemo } from "react";
+import DashboardLayout from "../layouts/DashboardLayout";
+import KPICard from "../components/KPICard";
+import DataTable from "../components/DataTable";
+import ChartCard from "../components/ChartCard";
+import LineChart from "../components/LineChart";
+import DoughnutChart from "../components/DoughnutChart";
+import ProductModal from "../components/ProductModal";
+import { useAppContext } from "../context/AppContext";
+import { formatCurrency, isLowStock } from "../utils/helpers";
 
+const BASE_URL = "http://127.0.0.1:8000";
 
 const OwnerDashboard = () => {
-  const { products, sales, addProduct, updateProduct, deleteProduct } = useAppContext();
-  const safeProducts = Array.isArray(products) ? products : [];
+  const { addProduct, updateProduct, deleteProduct } = useAppContext();
+
+  const [products, setProducts] = useState([]);
+  const [bestSellers, setBestSellers] = useState([]);
+  const [worstSellers, setWorstSellers] = useState([]);
+  const [lowStockItems, setLowStockItems] = useState([]);
+
+  // FIX: Separate revenue and itemsSold, driven from /analytics/this-month
+  const [revenue, setRevenue] = useState(0);
+  const [itemsSold, setItemsSold] = useState(0);
+
+  const [monthlyRevenue, setMonthlyRevenue] = useState([]);
+  const [categorySales, setCategorySales] = useState({ labels: [], values: [] });
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
-  const [modalMode, setModalMode] = useState('add');
-  const [revenue, setRevenue] = useState(0);
+  const [modalMode, setModalMode] = useState("add");
 
-
-  useEffect(() => {
   const token = localStorage.getItem("retailflow_token");
 
-  const fetchAnalytics = async () => {
+  const authHeader = { Authorization: `Bearer ${token}` };
+
+  // =============================
+  // LOAD PRODUCTS
+  // =============================
+
+  const loadProducts = async () => {
     try {
-      const data = await getAnalytics(token);
-      setRevenue(data.total_revenue);
-    } catch (error) {
-      console.error("Analytics fetch failed", error);
+      const res = await fetch(`${BASE_URL}/products/`, { headers: authHeader });
+      const data = await res.json();
+      setProducts(data);
+    } catch (err) {
+      console.error("Products fetch error:", err);
     }
   };
 
-  fetchAnalytics();
-}, []);
-  // Calculate KPIs from real data
-  const kpis = useMemo(() => {
-    const monthlySales = sales.filter(sale => isThisMonth(sale.dateTime));
-    
-    const monthlyRevenue = monthlySales.reduce((sum, sale) => sum + sale.total, 0);
-    const itemsSold = monthlySales.reduce((sum, sale) => {
-      return sum + sale.items.reduce((s, item) => s + item.quantity, 0);
-    }, 0);
-    const lowStockCount = safeProducts.filter(isLowStock).length;
-    
-    // Calculate inventory health (percentage of products with sufficient stock)
-    const healthyProducts = safeProducts.filter(p => p.quantity >= 10).length;
-    const inventoryHealth = products.length > 0 
-      ? Math.round((healthyProducts / products.length) * 100) 
-      : 0;
+  // =============================
+  // LOAD ANALYTICS
+  // =============================
 
-    return {
-      monthlyRevenue,
-      itemsSold,
-      lowStockCount,
-      inventoryHealth
-    };
-  }, [products, sales]);
+  const loadAnalytics = async () => {
+    try {
+      const [
+        thisMonthRes,   // FIX: use /analytics/this-month for revenue + items sold KPIs
+        bestRes,
+        worstRes,
+        lowStockRes,
+        monthlyRevenueRes,
+        categoryRes,
+      ] = await Promise.all([
+        fetch(`${BASE_URL}/analytics/this-month`, { headers: authHeader }),
+        fetch(`${BASE_URL}/analytics/top-products`, { headers: authHeader }),
+        fetch(`${BASE_URL}/analytics/worst-products`, { headers: authHeader }),
+        fetch(`${BASE_URL}/analytics/low-stock-products`, { headers: authHeader }),
+        fetch(`${BASE_URL}/analytics/monthly-revenue`, { headers: authHeader }),
+        fetch(`${BASE_URL}/analytics/category-sales`, { headers: authHeader }),
+      ]);
 
-  // Calculate best and worst sellers
-  const { bestSellers, worstSellers } = useMemo(() => {
-    const productSales = {};
-    
-    sales.forEach(sale => {
-      sale.items.forEach(item => {
-        if (!productSales[item.productId]) {
-          productSales[item.productId] = {
-            name: item.productName,
-            quantity: 0,
-            revenue: 0
-          };
-        }
-        productSales[item.productId].quantity += item.quantity;
-        productSales[item.productId].revenue += item.total;
+      const thisMonth = await thisMonthRes.json();
+      const bestData = await bestRes.json();
+      const worstData = await worstRes.json();
+      const lowStockData = await lowStockRes.json();
+      const revenueData = await monthlyRevenueRes.json();
+      const categoryData = await categoryRes.json();
+
+      // FIX: correct field names from /analytics/this-month response
+      setRevenue(thisMonth.total_revenue ?? 0);
+      setItemsSold(thisMonth.items_sold ?? 0);
+
+      setBestSellers(
+        bestData.map((item, i) => ({
+          id: i + 1,
+          name: item.name,
+          category: item.category || "N/A",
+          unitsSold: item.unitsSold,
+          revenue: item.revenue ?? 0,
+          stock: item.stock,
+        }))
+      );
+
+      setWorstSellers(
+        worstData.map((item, i) => ({
+          id: i + 1,
+          name: item.name,
+          category: item.category || "N/A",
+          unitsSold: item.unitsSold,
+          revenue: item.revenue ?? 0,
+          stock: item.stock,
+        }))
+      );
+
+      setLowStockItems(
+        lowStockData.map((item, i) => ({
+          id: i + 1,
+          name: item.name,
+          category: item.category || "N/A",
+          // FIX: backend returns `stock`, not `quantity`
+          stock: item.stock,
+          reorderLevel: 10,
+        }))
+      );
+
+      setMonthlyRevenue(revenueData.values ?? []);
+
+      setCategorySales({
+        labels: categoryData.labels ?? [],
+        values: categoryData.values ?? [],
       });
-    });
+    } catch (err) {
+      console.error("Analytics error:", err);
+    }
+  };
 
-    const salesArray = Object.entries(productSales).map(([id, data]) => {
-      const product = safeProducts.find(p => p.id === id);
-      return {
-        id,
-        name: data.name,
-        category: product?.category || 'N/A',
-        unitsSold: data.quantity,
-        revenue: data.revenue,
-        stock: product?.quantity || 0
-      };
-    });
+  // FIX: Single consolidated useEffect — removed duplicate fetchItemsSold useEffect
+  // that was overwriting itemsSold with undefined after loadAnalytics ran.
+  useEffect(() => {
+    loadProducts();
+    loadAnalytics();
+  }, []);
 
-    salesArray.sort((a, b) => b.unitsSold - a.unitsSold);
+  // =============================
+  // INVENTORY HEALTH
+  // =============================
 
-    return {
-      bestSellers: salesArray.slice(0, 5).map((item, index) => ({ ...item, id: index + 1 })),
-      worstSellers: salesArray.slice(-5).reverse().map((item, index) => ({ ...item, id: index + 1 }))
-    };
-  }, [products, sales]);
-
-  // Get low stock products
-  const lowStockItems = useMemo(() => {
-    return products
-      .filter(isLowStock)
-      .map((product, index) => ({
-        id: index + 1,
-        name: product.name,
-        category: product.category || 'N/A',
-        stock: product.quantity,
-        reorderLevel: 10,
-        unitsSold: 0 // Could calculate from sales if needed
-      }));
+  const inventoryHealth = useMemo(() => {
+    if (!products.length) return 0;
+    // FIX: use `stock` field, not `quantity` (matches product schema)
+    const healthy = products.filter((p) => (p.stock ?? 0) >= 10).length;
+    return Math.round((healthy / products.length) * 100);
   }, [products]);
 
-  // Chart data from real sales
-  const chartData = useMemo(() => {
-    // Revenue trend for last 12 months
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const currentMonth = new Date().getMonth();
-    const revenueByMonth = new Array(12).fill(0);
-    
-    sales.forEach(sale => {
-      const saleDate = new Date(sale.dateTime);
-      const monthIndex = saleDate.getMonth();
-      revenueByMonth[monthIndex] += sale.total;
-    });
+  // =============================
+  // PRODUCT ACTIONS
+  // =============================
 
-    // Category sales
-    const categorySales = {};
-    sales.forEach(sale => {
-      sale.items.forEach(item => {
-        const product = safeProducts.find(p => p.id === item.productId);
-        const category = product?.category || 'Other';
-        categorySales[category] = (categorySales[category] || 0) + item.total;
-      });
-    });
-
-    return {
-      revenue: {
-        labels: monthNames,
-        values: revenueByMonth
-      },
-      categories: {
-        labels: Object.keys(categorySales),
-        values: Object.values(categorySales)
-      }
-    };
-  }, [products, sales]);
-
-  // Handlers
   const handleAddProduct = () => {
-    setModalMode('add');
+    setModalMode("add");
     setEditingProduct(null);
     setIsModalOpen(true);
   };
 
   const handleEditProduct = (product) => {
-    setModalMode('edit');
+    setModalMode("edit");
     setEditingProduct(product);
     setIsModalOpen(true);
   };
 
-  const handleSaveProduct = (formData) => {
-    try {
-      if (modalMode === 'add') {
-        addProduct(formData);
-      } else {
-        updateProduct(editingProduct.id, formData);
+const handleSaveProduct = async (formData) => {
+
+  const payload = {
+    name: formData.name,
+    category: formData.category || null,
+    price: Number(formData.price),
+    stock: Number(formData.quantity)
+  }
+
+  console.log("Sending product:", payload)
+
+  try {
+
+    if (modalMode === "add") {
+
+      await fetch(`${BASE_URL}/products/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      })
+
+    } else {
+
+      await fetch(`${BASE_URL}/products/${editingProduct.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      })
+
+    }
+
+    setIsModalOpen(false)
+    loadProducts()
+
+  } catch (err) {
+    console.error("Save product error:", err)
+  }
+
+}
+  const handleDeleteProduct = async (id) => {
+
+  if (!window.confirm("Delete this product?")) return
+
+  try {
+
+    await fetch(`http://127.0.0.1:8000/products/${id}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`
       }
-    } catch (error) {
-      alert(error.message);
-    }
-  };
+    })
 
-  const handleDeleteProduct = (productId) => {
-    if (window.confirm('Are you sure you want to delete this product?')) {
-      deleteProduct(productId);
-    }
-  };
+    loadProducts()
 
-  // Table columns
-  const  productColumns = [
-    { label: '#', key: 'id' },
-    { label: 'Product Name', key: 'name' },
-    { label: 'Category', key: 'category' },
-    { label: 'Units Sold', key: 'unitsSold', render: (value) => value.toLocaleString() },
-    { label: 'Revenue', key: 'revenue', render: (value) => formatCurrency(value) },
-    { label: 'Stock', key: 'stock', render: (value) => value.toLocaleString() },
+  } catch (err) {
+
+    console.error("Delete error:", err)
+
+  }
+
+}
+
+  // =============================
+  // TABLE COLUMNS
+  // =============================
+
+  const productColumns = [
+    { label: "#", key: "id" },
+    { label: "Product", key: "name" },
+    // FIX: removed `|| "N/A"` from key (it was on the config object, not the value)
+    { label: "Category", key: "category" },
+    { label: "Units Sold", key: "unitsSold" },
+    { label: "Revenue", key: "revenue", render: (v) => formatCurrency(v ?? 0) },
+    { label: "Stock", key: "stock" },
   ];
 
   const lowStockColumns = [
-    { label: '#', key: 'id' },
-    { label: 'Product Name', key: 'name' },
-    { label: 'Category', key: 'category' },
-    { label: 'Current Stock', key: 'stock', render: (value) => <span className="text-danger-600 font-semibold">{value}</span> },
-    { label: 'Reorder Level', key: 'reorderLevel' },
+    { label: "#", key: "id" },
+    { label: "Product", key: "name" },
+    { label: "Category", key: "category" },
+    {
+      label: "Stock",
+      key: "stock",
+      render: (v, row) => (
+        <span className={isLowStock(row) ? "text-danger-600 font-semibold" : ""}>
+          {v}
+          {isLowStock(row) && " ⚠️"}
+        </span>
+      ),
+    },
+    { label: "Reorder Level", key: "reorderLevel" },
   ];
 
   const inventoryColumns = [
-    { label: 'Product Name', key: 'name' },
-    { label: 'Category', key: 'category', render: (value) => value || 'N/A' },
-    { label: 'Price', key: 'price', render: (value) => formatCurrency(value) },
-    { label: 'Stock', key: 'quantity', render: (value, row) => (
-      <span className={isLowStock(row) ? 'text-danger-600 font-semibold' : ''}>
-        {value}
-        {isLowStock(row) && ' ⚠️'}
-      </span>
-    )},
-    { 
-      label: 'Actions', 
-      key: 'id', 
+    { label: "Product", key: "name" },
+    { label: "Category", key: "category" },
+    { label: "Price", key: "price", render: (v) => formatCurrency(v ?? 0) },
+    {
+      label: "Stock",
+      key: "stock",
+      render: (v, row) => (
+        <span className={isLowStock(row) ? "text-danger-600 font-semibold" : ""}>
+          {v}
+          {isLowStock(row) && " ⚠️"}
+        </span>
+      ),
+    },
+    {
+      label: "Actions",
+      key: "id",
       render: (id, row) => (
         <div className="flex gap-2">
-          <button
-            onClick={() => handleEditProduct(row)}
-            className="text-primary-600 hover:text-primary-700 font-medium text-sm"
-          >
+          <button onClick={() => handleEditProduct(row)} className="text-primary-600">
             Edit
           </button>
-          <button
-            onClick={() => handleDeleteProduct(id)}
-            className="text-danger-600 hover:text-danger-700 font-medium text-sm"
-          >
+          <button onClick={() => handleDeleteProduct(id)} className="text-danger-600">
             Delete
           </button>
         </div>
-      )
+      ),
     },
   ];
 
   return (
     <DashboardLayout role="owner" pageTitle="Owner Dashboard">
-      {/* KPI Cards Section */}
+      {/* KPI */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-        <KPICard
-          title="Monthly Revenue"
-          value={revenue}
-          icon="💰"
-          prefix="₹"
-        />
-        <KPICard
-          title="Items Sold (Monthly)"
-          value={kpis.itemsSold}
-          icon="📦"
-        />
-        <KPICard
-          title="Low Stock Products"
-          value={kpis.lowStockCount}
-          icon="⚠️"
-        />
-        <KPICard
-          title="Inventory Health Score"
-          value={kpis.inventoryHealth}
-          icon="📊"
-          suffix="%"
-        />
+        <KPICard title="This Month Revenue" value={revenue} icon="💰" prefix="₹" />
+        <KPICard title="Items Sold" value={itemsSold} icon="📦" />
+        <KPICard title="Low Stock Products" value={lowStockItems.length} icon="⚠️" />
+        <KPICard title="Inventory Health" value={inventoryHealth} suffix="%" icon="📊" />
       </div>
 
-      {/* Charts Section */}
+      {/* CHARTS */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
-        <ChartCard title="Monthly Revenue Trend">
-          <LineChart 
-            data={chartData.revenue.values} 
-            labels={chartData.revenue.labels} 
+        <ChartCard title="Monthly Revenue">
+          <LineChart
+            data={monthlyRevenue}
+            labels={["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]}
           />
         </ChartCard>
-        <ChartCard title="Category-wise Sales">
-          <DoughnutChart 
-            data={chartData.categories.values} 
-            labels={chartData.categories.labels} 
-          />
+
+        <ChartCard title="Category Sales">
+          <DoughnutChart data={categorySales.values} labels={categorySales.labels} />
         </ChartCard>
       </div>
 
-      {/* Product Management Section */}
-      <div className="mb-10">
-        <div className="card p-6">
-          <div className="flex items-center justify-between mb-5">
-            <h3 className="text-lg font-semibold text-gray-900">Product Inventory</h3>
-            <button onClick={handleAddProduct} className="btn btn-primary">
-              <span className="mr-2">+</span>
-              Add Product
-            </button>
-          </div>
-          <div className="overflow-x-auto -mx-6">
-            <div className="inline-block min-w-full align-middle">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    {inventoryColumns.map((column, index) => (
-                      <th
-                        key={index}
-                        className="px-6 py-3.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider"
-                      >
-                        {column.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-100">
-                  {safeProducts.map((row, rowIndex) => (
-                    <tr key={rowIndex} className="hover:bg-gray-50 transition-colors duration-150">
-                      {inventoryColumns.map((column, colIndex) => (
-                        <td key={colIndex} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {column.render ? column.render(row[column.key], row) : row[column.key]}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* INVENTORY */}
+      {/* <DataTable title="Product Inventory" columns={inventoryColumns} data={products} /> */}
+      <div className="mb-6 flex justify-between items-center">
 
-      {/* Insight Tables Section */}
-      <div className="space-y-6">
-        {bestSellers.length > 0 && (
-          <DataTable
-            title="Top 5 Best-Selling Products"
-            columns={productColumns}
-            data={bestSellers}
-          />
-        )}
-        {worstSellers.length > 0 && (
-          <DataTable
-            title="Top 5 Worst-Selling Products"
-            columns={productColumns}
-            data={worstSellers}
-          />
-        )}
-        {lowStockItems.length > 0 && (
-          <DataTable
-            title="Low Stock / Near Out-of-Stock Products"
-            columns={lowStockColumns}
-            data={lowStockItems}
-          />
-        )}
-      </div>
+<h2 className="text-lg font-semibold">Product Inventory</h2>
 
-      {/* Product Modal */}
+<button
+onClick={handleAddProduct}
+className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+>
+Add Product
+</button>
+
+</div>
+
+<DataTable
+columns={inventoryColumns}
+data={products}
+/>
+
+      {/* INSIGHTS */}
+      <DataTable title="Top 5 Best Sellers" columns={productColumns} data={bestSellers} />
+      <DataTable title="Top 5 Worst Sellers" columns={productColumns} data={worstSellers} />
+      <DataTable title="Low Stock Products" columns={lowStockColumns} data={lowStockItems} />
+
       <ProductModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
