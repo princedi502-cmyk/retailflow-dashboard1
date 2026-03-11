@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.mongodb import connect_to_mongo, close_mongo_connection
-from app.api.router import auth, products, orders, analytics
+from app.api.router import auth, products, orders, analytics,supplier
 
 
 @asynccontextmanager
@@ -37,6 +37,7 @@ app.include_router(auth.router)
 app.include_router(products.router)
 app.include_router(orders.router)
 app.include_router(analytics.router)
+app.include_router(supplier.router)
 
 
 @app.get("/health")

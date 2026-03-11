@@ -1,9 +1,11 @@
-from fastapi import APIRouter, HTTPException, Depends
+from typing import List
+
+from fastapi import APIRouter, HTTPException, Depends, Query
 from bson import ObjectId
 
 from app.api.router.dependency import get_current_user, require_owner, require_employee
 from app.db.mongodb import db_manager
-from app.schemas.product_schema import ProductCreate, ProductResponse
+from app.schemas.product_schema import ProductCreate, ProductResponse,LowStockProductResponse
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
@@ -25,11 +27,35 @@ async def create_product(
     return new_product
 
 @router.get("/", response_model=list[ProductResponse])
-async def get_products(user=Depends(get_current_user)):
+async def get_products( page: int = Query(1, ge=1),limit: int = Query(10, ge=1),user=Depends(get_current_user)):
+    
+    skip_value = (page - 1) * limit 
+    products = []
+    async for product in db_manager.db["products"].find().skip(skip_value).limit(limit):
+        product["id"] = str(product["_id"])
+        del product["_id"]
+        products.append(product)
 
+    return products
+
+@router.get("/low-stock",response_model=List[LowStockProductResponse])
+async def get_product(user=Depends(get_current_user)):
+    products = []
+    
+    async for product in db_manager.db["products"].find({
+        "$expr": { "$lt": ["$stock", "$low_stock_threshold"] }
+    }):
+        product["id"] = str(product["_id"])
+        del product["_id"]
+        products.append(product)
+
+    return products
+
+@router.get("/search",response_model=List[ProductResponse])
+async def get_product(q :str | None = None,user=Depends(get_current_user)):
     products = []
 
-    async for product in db_manager.db["products"].find():
+    async for product in db_manager.db["products"].find({ "name": { "$regex": f"^{q}", "$options": "i" } }):
         product["id"] = str(product["_id"])
         del product["_id"]
         products.append(product)
@@ -90,9 +116,10 @@ async def get_product(barcode: str, user=Depends(get_current_user)):
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     product["id"] = str(product["_id"])
-    product["barcode"] = str(product.get("_barcode", ""))
     
-
     return product
+
+
+
 
 

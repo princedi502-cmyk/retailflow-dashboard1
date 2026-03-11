@@ -1,334 +1,234 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import {
   generateId,
-  validateProduct,
   isLowStock,
   calculateCartTotal,
 } from "../utils/helpers";
 import { getProducts } from "../services/api";
+
 const AppContext = createContext();
 
-// Initial sample products for demonstration
-const initialProducts = [
-  {
-    id: "p1",
-    name: "Wireless Mouse",
-    price: 599,
-    quantity: 145,
-    category: "Electronics",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: "p2",
-    name: "Cotton T-Shirt",
-    price: 399,
-    quantity: 89,
-    category: "Clothing",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: "p3",
-    name: "Rice (5kg)",
-    price: 250,
-    quantity: 456,
-    category: "Groceries",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: "p4",
-    name: "Coffee Maker",
-    price: 2499,
-    quantity: 67,
-    category: "Home & Kitchen",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: "p5",
-    name: "Yoga Mat",
-    price: 799,
-    quantity: 123,
-    category: "Sports",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: "p6",
-    name: "LED Bulb (Pack of 4)",
-    price: 299,
-    quantity: 2,
-    category: "Electronics",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
+const BASE_URL = "http://127.0.0.1:8000";
+
+// Helper — all authenticated API calls go through here.
+// Automatically attaches the token and redirects to /login on 401/403.
+const apiFetch = async (url, options = {}) => {
+  const token = localStorage.getItem("retailflow_token");
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      ...options.headers,
+    },
+  });
+
+  if (res.status === 401 || res.status === 403) {
+    localStorage.removeItem("retailflow_token");
+    window.location.href = "/login";
+    return null;
+  }
+
+  return res;
+};
 
 export function AppProvider({ children }) {
-  // Load state from localStorage or use defaults
-  const loadState = () => {
-    try {
-      const saved = localStorage.getItem("retailflow_state");
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (error) {
-      console.error("Failed to load state:", error);
-    }
-    return {
-      products: initialProducts,
-      sales: [],
-      cart: [],
-      sessionId: generateId(),
-    };
-  };
+  const [products, setProducts] = useState([]);
+  const [cart, setCart] = useState([]);
+  const [sales, setSales] = useState([]);
+  const [sessionId] = useState(generateId);
 
-  const [state, setState] = useState(loadState);
+  // ============================================================
+  // LOAD PRODUCTS FROM SERVER ON MOUNT
+  // ============================================================
 
-  // Save state to localStorage whenever it changes
   useEffect(() => {
     const loadProducts = async () => {
       try {
         const data = await getProducts();
-
-        const normalized = data.map((p) => ({
-          ...p,
-          barcode: p.barcode || `AUTO-${p.id}`,
-        }));
-
-        setState((prev) => ({
-          ...prev,
-          products: normalized,
-        }));
+        setProducts(data);
       } catch (err) {
-        console.error("Failed to load products", err);
+        console.error("Failed to load products:", err);
       }
-      const token = localStorage.getItem("retailflow_token");
-      console.log("TOKEN:", token);
     };
-
     loadProducts();
   }, []);
-  useEffect(() => {
-    try {
-      localStorage.setItem("retailflow_state", JSON.stringify(state));
-    } catch (error) {
-      console.error("Failed to save state:", error);
+
+  // ============================================================
+  // PRODUCT MANAGEMENT — all wired to the real API
+  // ============================================================
+
+  const addProduct = async (productData) => {
+    // productData already has the correct shape from ProductModal:
+    // { name, price, stock, category, barcode, low_stock_threshold }
+    const res = await apiFetch(`${BASE_URL}/products/`, {
+      method: "POST",
+      body: JSON.stringify(productData),
+    });
+
+    if (!res) return; // redirected to login
+
+    if (!res.ok) {
+      const err = await res.json();
+      console.error("Add product failed:", err);
+      throw new Error(err.detail || "Failed to add product");
     }
-  }, [state]);
 
-  // Product Management Functions
-  const addProduct = (productData) => {
-    const errors = validateProduct(productData);
-    if (Object.keys(errors).length > 0) {
-      throw new Error(Object.values(errors).join(", "));
-    }
-
-    const newProduct = {
-      id: generateId(),
-      ...productData,
-      price: Number(productData.price),
-      quantity: Number(productData.quantity),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    setState((prev) => ({
-      ...prev,
-      products: [...prev.products, newProduct],
-    }));
-
+    const newProduct = await res.json();
+    setProducts((prev) => [...prev, newProduct]);
     return newProduct;
   };
 
-  const updateProduct = (id, updates) => {
-    const updatedData = { ...updates };
-    const errors = validateProduct({
-      name: updatedData.name,
-      price: updatedData.price,
-      quantity: updatedData.quantity,
+  const updateProduct = async (id, updates) => {
+    // updates has the same shape as ProductCreate
+    const res = await apiFetch(`${BASE_URL}/products/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(updates),
     });
 
-    if (Object.keys(errors).length > 0) {
-      throw new Error(Object.values(errors).join(", "));
+    if (!res) return;
+
+    if (!res.ok) {
+      const err = await res.json();
+      console.error("Update product failed:", err);
+      throw new Error(err.detail || "Failed to update product");
     }
 
-    setState((prev) => ({
-      ...prev,
-      products: prev.products.map((p) =>
-        p.id === id
-          ? {
-              ...p,
-              ...updatedData,
-              price: Number(updatedData.price),
-              quantity: Number(updatedData.quantity),
-              updatedAt: new Date().toISOString(),
-            }
-          : p,
-      ),
-    }));
+    const updated = await res.json();
+    setProducts((prev) => prev.map((p) => (p.id === id ? updated : p)));
+    return updated;
   };
 
-  const deleteProduct = (id) => {
-    setState((prev) => ({
-      ...prev,
-      products: prev.products.filter((p) => p.id !== id),
-    }));
+  const deleteProduct = async (id) => {
+    const res = await apiFetch(`${BASE_URL}/products/${id}`, {
+      method: "DELETE",
+    });
+
+    if (!res) return;
+
+    if (!res.ok) {
+      const err = await res.json();
+      console.error("Delete product failed:", err);
+      throw new Error(err.detail || "Failed to delete product");
+    }
+
+    setProducts((prev) => prev.filter((p) => p.id !== id));
   };
 
-  // Cart Management Functions
+  // ============================================================
+  // CART MANAGEMENT (local state only — no API needed)
+  // ============================================================
+
   const addToCart = (productId, quantity) => {
-    const product = state.products.find((p) => p.id === productId);
+    const product = products.find((p) => p.id === productId);
+    if (!product) throw new Error("Product not found");
 
-    if (!product) {
-      throw new Error("Product not found");
-    }
-
-   setState((prev) => {
-  const existing = prev.cart.find((item) => item.productId === productId);
-
-  if (existing) {
-    return {
-      ...prev,
-      cart: prev.cart.map((item) =>
-        item.productId === productId
-          ? { ...item, quantity: item.quantity + quantity }
-          : item
-      ),
-    };
-  }
-
-  return {
-    ...prev,
-    cart: [
-      ...prev.cart,
-      {
-        productId: product.id,
-        productName: product.name,
-        barcode: product.barcode,
-        price: product.price,
-        quantity: quantity,
-        availableStock: product.quantity,
-      },
-    ],
-  };
-});
+    setCart((prev) => {
+      const existing = prev.find((item) => item.productId === productId);
+      if (existing) {
+        return prev.map((item) =>
+          item.productId === productId
+            ? { ...item, quantity: item.quantity + quantity }
+            : item
+        );
+      }
+      return [
+        ...prev,
+        {
+          productId: product.id,
+          productName: product.name,
+          barcode: product.barcode,
+          price: product.price,
+          quantity,
+          availableStock: product.stock,  // FIX: was product.quantity
+        },
+      ];
+    });
   };
 
   const updateCartItem = (productId, quantity) => {
-    const product = state.products.find((p) => p.id === productId);
+    const product = products.find((p) => p.id === productId);
+    if (quantity < 1) throw new Error("Quantity must be at least 1");
+    if (quantity > product.stock)   // FIX: was product.quantity
+      throw new Error(`Only ${product.stock} items available in stock`);
 
-    if (quantity < 1) {
-      throw new Error("Quantity must be at least 1");
-    }
-
-    if (quantity > product.quantity) {
-      throw new Error(`Only ${product.quantity} items available in stock`);
-    }
-
-    setState((prev) => ({
-      ...prev,
-      cart: prev.cart.map((item) =>
-        item.productId === productId ? { ...item, quantity } : item,
-      ),
-    }));
+    setCart((prev) =>
+      prev.map((item) =>
+        item.productId === productId ? { ...item, quantity } : item
+      )
+    );
   };
 
   const removeFromCart = (productId) => {
-    setState((prev) => ({
-      ...prev,
-      cart: prev.cart.filter((item) => item.productId !== productId),
-    }));
+    setCart((prev) => prev.filter((item) => item.productId !== productId));
   };
 
-  const clearCart = () => {
-    setState((prev) => ({
-      ...prev,
-      cart: [],
-    }));
-  };
+  const clearCart = () => setCart([]);
 
-  // Sales Management Functions
+  // ============================================================
+  // SALES
+  // ============================================================
+
   const confirmSale = (generatedBy = "employee") => {
-    if (state.cart.length === 0) {
-      throw new Error("Cart is empty");
+    if (cart.length === 0) throw new Error("Cart is empty");
+
+    for (const item of cart) {
+      const product = products.find((p) => p.id === item.productId);
+      if (!product) throw new Error(`Product ${item.productName} no longer exists`);
+      if (item.quantity > product.stock)   // FIX: was product.quantity
+        throw new Error(`Insufficient stock for ${item.productName}. Only ${product.stock} available.`);
     }
 
-    // Validate stock availability for all items
-    for (const item of state.cart) {
-      const product = state.products.find((p) => p.id === item.productId);
-      if (!product) {
-        throw new Error(`Product ${item.productName} no longer exists`);
-      }
-      if (item.quantity > product.quantity) {
-        throw new Error(
-          `Insufficient stock for ${item.productName}. Only ${product.quantity} available.`,
-        );
-      }
-    }
-
-    // Create sale record
     const sale = {
       saleId: generateId(),
       dateTime: new Date().toISOString(),
-      items: state.cart.map((item) => ({
+      items: cart.map((item) => ({
         productId: item.productId,
         productName: item.productName,
         price: item.price,
         quantity: item.quantity,
         total: item.price * item.quantity,
       })),
-      subtotal: calculateCartTotal(state.cart),
-      total: calculateCartTotal(state.cart),
+      subtotal: calculateCartTotal(cart),
+      total: calculateCartTotal(cart),
       generatedBy,
-      sessionId: state.sessionId,
+      sessionId,
     };
 
-    // Deduct stock
-    setState((prev) => ({
-      ...prev,
-      products: prev.products.map((product) => {
-        const cartItem = prev.cart.find(
-          (item) => item.productId === product.id,
-        );
+    // Deduct stock locally
+    setProducts((prev) =>
+      prev.map((product) => {
+        const cartItem = cart.find((item) => item.productId === product.id);
         if (cartItem) {
           return {
             ...product,
-            quantity: product.quantity - cartItem.quantity,
+            stock: product.stock - cartItem.quantity,  // FIX: was product.quantity
             updatedAt: new Date().toISOString(),
           };
         }
         return product;
-      }),
-      sales: [...prev.sales, sale],
-      cart: [],
-    }));
+      })
+    );
 
+    setSales((prev) => [...prev, sale]);
+    setCart([]);
     return sale;
   };
 
-  // Get sales based on role
   const getSales = (role) => {
-    if (role === "owner") {
-      return state.sales;
-    }
-    // Employee sees only sales from current session
-    return state.sales.filter((sale) => sale.sessionId === state.sessionId);
+    if (role === "owner") return sales;
+    return sales.filter((sale) => sale.sessionId === sessionId);
   };
 
-  // Get products with low stock
   const getLowStockProducts = () => {
-    if (!Array.isArray(state.products)) return [];
-
-    return state.products.filter(isLowStock);
+    if (!Array.isArray(products)) return [];
+    return products.filter(isLowStock);
   };
 
   const value = {
-    products: state.products,
-    cart: state.cart,
-    sales: state.sales,
+    products,
+    cart,
+    sales,
     addProduct,
     updateProduct,
     deleteProduct,
@@ -346,8 +246,6 @@ export function AppProvider({ children }) {
 
 export function useAppContext() {
   const context = useContext(AppContext);
-  if (!context) {
-    throw new Error("useAppContext must be used within AppProvider");
-  }
+  if (!context) throw new Error("useAppContext must be used within AppProvider");
   return context;
 }

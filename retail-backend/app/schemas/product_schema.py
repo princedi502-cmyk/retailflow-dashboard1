@@ -8,6 +8,7 @@ class ProductBase(BaseModel):
     price: float
     stock: int
     barcode: Optional[str] = None
+    low_stock_threshold: Optional[int] = None
     
 
 
@@ -22,10 +23,14 @@ class ProductUpdate(BaseModel):
     stock: Optional[int] = None
     barcode: Optional[str] = None
     
+class LowStockProductResponse(BaseModel):
+    name: str
+    stock: int
+    low_stock_threshold: Optional[int] = None
 
 
 class ProductResponse(ProductBase):
-    id: str
+    id: str 
 
     class Config:
         # This allows the model to work with MongoDB dictionaries

@@ -19,7 +19,6 @@ const OwnerDashboard = () => {
   const [worstSellers, setWorstSellers] = useState([]);
   const [lowStockItems, setLowStockItems] = useState([]);
 
-  // FIX: Separate revenue and itemsSold, driven from /analytics/this-month
   const [revenue, setRevenue] = useState(0);
   const [itemsSold, setItemsSold] = useState(0);
 
@@ -31,8 +30,10 @@ const OwnerDashboard = () => {
   const [modalMode, setModalMode] = useState("add");
 
   const token = localStorage.getItem("retailflow_token");
-
-  const authHeader = { Authorization: `Bearer ${token}` };
+  const authHeader = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
 
   // =============================
   // LOAD PRODUCTS
@@ -41,6 +42,11 @@ const OwnerDashboard = () => {
   const loadProducts = async () => {
     try {
       const res = await fetch(`${BASE_URL}/products/`, { headers: authHeader });
+      if (res.status === 401 || res.status === 403) {
+        localStorage.removeItem("retailflow_token");
+        window.location.href = "/login";
+        return;
+      }
       const data = await res.json();
       setProducts(data);
     } catch (err) {
@@ -55,7 +61,7 @@ const OwnerDashboard = () => {
   const loadAnalytics = async () => {
     try {
       const [
-        thisMonthRes,   // FIX: use /analytics/this-month for revenue + items sold KPIs
+        thisMonthRes,
         bestRes,
         worstRes,
         lowStockRes,
@@ -77,7 +83,6 @@ const OwnerDashboard = () => {
       const revenueData = await monthlyRevenueRes.json();
       const categoryData = await categoryRes.json();
 
-      // FIX: correct field names from /analytics/this-month response
       setRevenue(thisMonth.total_revenue ?? 0);
       setItemsSold(thisMonth.items_sold ?? 0);
 
@@ -108,14 +113,12 @@ const OwnerDashboard = () => {
           id: i + 1,
           name: item.name,
           category: item.category || "N/A",
-          // FIX: backend returns `stock`, not `quantity`
           stock: item.stock,
-          reorderLevel: 10,
+          reorderLevel: item.low_stock_threshold ?? 10,
         }))
       );
 
       setMonthlyRevenue(revenueData.values ?? []);
-
       setCategorySales({
         labels: categoryData.labels ?? [],
         values: categoryData.values ?? [],
@@ -125,8 +128,6 @@ const OwnerDashboard = () => {
     }
   };
 
-  // FIX: Single consolidated useEffect — removed duplicate fetchItemsSold useEffect
-  // that was overwriting itemsSold with undefined after loadAnalytics ran.
   useEffect(() => {
     loadProducts();
     loadAnalytics();
@@ -138,7 +139,6 @@ const OwnerDashboard = () => {
 
   const inventoryHealth = useMemo(() => {
     if (!products.length) return 0;
-    // FIX: use `stock` field, not `quantity` (matches product schema)
     const healthy = products.filter((p) => (p.stock ?? 0) >= 10).length;
     return Math.round((healthy / products.length) * 100);
   }, [products]);
@@ -159,73 +159,71 @@ const OwnerDashboard = () => {
     setIsModalOpen(true);
   };
 
-const handleSaveProduct = async (formData) => {
+  const handleSaveProduct = async (formData) => {
+    // FIX: ProductModal already builds the correct ProductCreate payload:
+    // { name, price (float), stock (int), category, barcode, low_stock_threshold }
+    // Do NOT reconstruct it here — just pass formData straight to the API.
+    console.log("Sending product:", formData);
 
-  const payload = {
-    name: formData.name,
-    category: formData.category || null,
-    price: Number(formData.price),
-    stock: Number(formData.quantity)
-  }
+    try {
+      if (modalMode === "add") {
+        const res = await fetch(`${BASE_URL}/products/`, {
+          method: "POST",
+          headers: authHeader,
+          body: JSON.stringify(formData),   // ← formData is already the correct shape
+        });
 
-  console.log("Sending product:", payload)
+        if (!res.ok) {
+          const err = await res.json();
+          console.error("Add product failed:", err);
+          alert(`Error: ${err.detail || "Failed to add product"}`);
+          return;
+        }
 
-  try {
+      } else {
+        const res = await fetch(`${BASE_URL}/products/${editingProduct.id}`, {
+          method: "PUT",
+          headers: authHeader,
+          body: JSON.stringify(formData),   // ← same here
+        });
 
-    if (modalMode === "add") {
-
-      await fetch(`${BASE_URL}/products/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      })
-
-    } else {
-
-      await fetch(`${BASE_URL}/products/${editingProduct.id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      })
-
-    }
-
-    setIsModalOpen(false)
-    loadProducts()
-
-  } catch (err) {
-    console.error("Save product error:", err)
-  }
-
-}
-  const handleDeleteProduct = async (id) => {
-
-  if (!window.confirm("Delete this product?")) return
-
-  try {
-
-    await fetch(`http://127.0.0.1:8000/products/${id}`, {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${token}`
+        if (!res.ok) {
+          const err = await res.json();
+          console.error("Update product failed:", err);
+          alert(`Error: ${err.detail || "Failed to update product"}`);
+          return;
+        }
       }
-    })
 
-    loadProducts()
+      setIsModalOpen(false);
+      loadProducts();  // refresh the table
 
-  } catch (err) {
+    } catch (err) {
+      console.error("Save product error:", err);
+    }
+  };
 
-    console.error("Delete error:", err)
+  const handleDeleteProduct = async (id) => {
+    if (!window.confirm("Delete this product?")) return;
 
-  }
+    try {
+      const res = await fetch(`${BASE_URL}/products/${id}`, {
+        method: "DELETE",
+        headers: authHeader,
+      });
 
-}
+      if (!res.ok) {
+        const err = await res.json();
+        console.error("Delete failed:", err);
+        alert(`Error: ${err.detail || "Failed to delete product"}`);
+        return;
+      }
+
+      loadProducts();
+    } catch (err) {
+      console.error("Delete error:", err);
+    }
+  };
 
   // =============================
   // TABLE COLUMNS
@@ -234,7 +232,6 @@ const handleSaveProduct = async (formData) => {
   const productColumns = [
     { label: "#", key: "id" },
     { label: "Product", key: "name" },
-    // FIX: removed `|| "N/A"` from key (it was on the config object, not the value)
     { label: "Category", key: "category" },
     { label: "Units Sold", key: "unitsSold" },
     { label: "Revenue", key: "revenue", render: (v) => formatCurrency(v ?? 0) },
@@ -250,8 +247,7 @@ const handleSaveProduct = async (formData) => {
       key: "stock",
       render: (v, row) => (
         <span className={isLowStock(row) ? "text-danger-600 font-semibold" : ""}>
-          {v}
-          {isLowStock(row) && " ⚠️"}
+          {v}{isLowStock(row) && " ⚠️"}
         </span>
       ),
     },
@@ -267,8 +263,7 @@ const handleSaveProduct = async (formData) => {
       key: "stock",
       render: (v, row) => (
         <span className={isLowStock(row) ? "text-danger-600 font-semibold" : ""}>
-          {v}
-          {isLowStock(row) && " ⚠️"}
+          {v}{isLowStock(row) && " ⚠️"}
         </span>
       ),
     },
@@ -277,12 +272,8 @@ const handleSaveProduct = async (formData) => {
       key: "id",
       render: (id, row) => (
         <div className="flex gap-2">
-          <button onClick={() => handleEditProduct(row)} className="text-primary-600">
-            Edit
-          </button>
-          <button onClick={() => handleDeleteProduct(id)} className="text-danger-600">
-            Delete
-          </button>
+          <button onClick={() => handleEditProduct(row)} className="text-primary-600">Edit</button>
+          <button onClick={() => handleDeleteProduct(id)} className="text-danger-600">Delete</button>
         </div>
       ),
     },
@@ -290,6 +281,7 @@ const handleSaveProduct = async (formData) => {
 
   return (
     <DashboardLayout role="owner" pageTitle="Owner Dashboard">
+
       {/* KPI */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
         <KPICard title="This Month Revenue" value={revenue} icon="💰" prefix="₹" />
@@ -306,31 +298,23 @@ const handleSaveProduct = async (formData) => {
             labels={["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]}
           />
         </ChartCard>
-
         <ChartCard title="Category Sales">
           <DoughnutChart data={categorySales.values} labels={categorySales.labels} />
         </ChartCard>
       </div>
 
       {/* INVENTORY */}
-      {/* <DataTable title="Product Inventory" columns={inventoryColumns} data={products} /> */}
       <div className="mb-6 flex justify-between items-center">
+        <h2 className="text-lg font-semibold">Product Inventory</h2>
+        <button
+          onClick={handleAddProduct}
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+        >
+          Add Product
+        </button>
+      </div>
 
-<h2 className="text-lg font-semibold">Product Inventory</h2>
-
-<button
-onClick={handleAddProduct}
-className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
->
-Add Product
-</button>
-
-</div>
-
-<DataTable
-columns={inventoryColumns}
-data={products}
-/>
+      <DataTable columns={inventoryColumns} data={products} />
 
       {/* INSIGHTS */}
       <DataTable title="Top 5 Best Sellers" columns={productColumns} data={bestSellers} />
@@ -344,6 +328,7 @@ data={products}
         product={editingProduct}
         mode={modalMode}
       />
+
     </DashboardLayout>
   );
 };

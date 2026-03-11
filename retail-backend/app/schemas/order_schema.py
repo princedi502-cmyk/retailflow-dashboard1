@@ -13,7 +13,7 @@ class OrderCreate(BaseModel):
 
 class OrderItemResponse(BaseModel):
     product_id: str
-    barcode: str
+    barcode: Optional[str] = None
     name: str
     price: float
     quantity: int

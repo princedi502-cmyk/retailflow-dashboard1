@@ -346,3 +346,6 @@ async def this_month(user=Depends(get_current_user)):
         "total_revenue": 0,
         "items_sold": 0
     }
+
+# @router.get("/sales-by-employee")
+# async def sales_by_employee(user=Depends(require_employee)):

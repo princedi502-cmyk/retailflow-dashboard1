@@ -8,6 +8,7 @@ async def create_order_service(order):
 
     product_collection = db_manager.db["products"]
     order_collection = db_manager.db["orders"]
+    user_collection = db_manager.db["users"]
 
     order_items = []
     total_price = 0
@@ -37,6 +38,7 @@ async def create_order_service(order):
                 "name": product["name"],
                 "price": product["price"],
                 "quantity": item.quantity
+                
         })
 
         await product_collection.update_one(
@@ -68,5 +70,5 @@ async def get_orders_service():
         order["id"] = str(order["_id"])
 
         orders.append(order)
-
+    
     return orders
