@@ -3,6 +3,7 @@ import { loginUser } from "../services/api"
 
 const AuthContext = createContext()
 
+// Use sessionStorage for tab isolation (each tab has its own storage)
 const TOKEN_KEY = "retailflow_token"
 
 export function AuthProvider({ children }) {
@@ -16,55 +17,85 @@ export function AuthProvider({ children }) {
   }, [])
 
   const checkSession = () => {
-
-    const token = localStorage.getItem(TOKEN_KEY)
+    // Use sessionStorage instead of localStorage for tab isolation
+    const token = sessionStorage.getItem(TOKEN_KEY)
 
     if (token) {
-      setIsAuthenticated(true)
+      try {
+        // Parse JWT token to get user data
+        const payload = JSON.parse(atob(token.split(".")[1]))
+        
+        // Validate token structure
+        if (!payload.sub || !payload.role) {
+          throw new Error('Invalid token structure')
+        }
+
+        setUser({
+          email: payload.sub,  // Use 'sub' consistently
+          role: payload.role
+        })
+        setIsAuthenticated(true)
+      } catch (error) {
+        // Invalid token - clear it
+        console.error('Token validation error:', error)
+        sessionStorage.removeItem(TOKEN_KEY)
+        setUser(null)
+        setIsAuthenticated(false)
+      }
+    } else {
+      setUser(null)
+      setIsAuthenticated(false)
     }
 
     setIsLoading(false)
   }
 
   const login = async (email, password) => {
-
     try {
-
       const result = await loginUser(email, password)
 
-      if (result.access_token) {
+      if (result.success) {
+        // Clear any existing token first
+        sessionStorage.removeItem(TOKEN_KEY)
+        
+        // Store token in sessionStorage (tab-specific)
+        sessionStorage.setItem(TOKEN_KEY, result.access_token)
 
-  localStorage.setItem(TOKEN_KEY, result.access_token)
+        const payload = JSON.parse(atob(result.access_token.split(".")[1]))
 
-  const payload = JSON.parse(atob(result.access_token.split(".")[1]))
+        // Validate payload before setting state
+        if (!payload.sub || !payload.role) {
+          throw new Error('Invalid token received from server')
+        }
 
-  setUser({
-    email: payload.sub,
-    role: payload.role
-  })
+        setUser({
+          email: payload.sub,  // Use 'sub' consistently
+          role: payload.role
+        })
 
-  setIsAuthenticated(true)
+        setIsAuthenticated(true)
 
-  return { success: true }
-}
-
-      return { success: false, error: "Invalid credentials" }
+        return { success: true }
+      } else {
+        // Handle different error types
+        if (result.isLocked) {
+          return { success: false, error: result.error, isLocked: true }
+        } else {
+          return { success: false, error: result.error }
+        }
+      }
 
     } catch (error) {
-
+      console.error('Login error:', error)
       return { success: false, error: "Server error" }
-
     }
-
   }
 
   const logout = () => {
-
-    localStorage.removeItem(TOKEN_KEY)
-
-    setIsAuthenticated(false)
-
+    // Clear from sessionStorage (this tab only)
+    sessionStorage.removeItem(TOKEN_KEY)
     setUser(null)
+    setIsAuthenticated(false)
   }
 
   const value = {
@@ -83,7 +114,6 @@ export function AuthProvider({ children }) {
 }
 
 export function useAuth() {
-
   const context = useContext(AuthContext)
 
   if (!context) {

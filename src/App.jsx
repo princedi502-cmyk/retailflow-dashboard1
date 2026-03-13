@@ -1,31 +1,38 @@
-import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
+import Register from './pages/Register';
 import OwnerDashboard from './pages/OwnerDashboard';
 import EmployeeDashboard from './pages/EmployeeDashboard';
+import EmailVerification from './pages/EmailVerification';
+import ResendVerification from './pages/ResendVerification';
+import PasswordResetRequest from './pages/PasswordResetRequest';
+import PasswordReset from './pages/PasswordReset';
 
-// Root redirect component
-function RootRedirect() {
+// Role validation component
+function RoleGuard({ children, requiredRole }) {
+  const { isAuthenticated, user } = useAuth();
+  
+  if (!isAuthenticated || !user) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  if (user.role !== requiredRole) {
+    // Redirect to correct dashboard based on user's role
+    const correctPath = user.role === 'owner' ? '/owner' : '/employee';
+    return <Navigate to={correctPath} replace />;
+  }
+  
+  return children;
+}
+
+// Single authentication-aware routing component
+function AppRoutes() {
   const { isAuthenticated, user, isLoading } = useAuth();
-  const navigate = useNavigate();
 
-  useEffect(() => {
-    if (!isLoading) {
-      if (isAuthenticated && user) {
-        // Redirect to role-based dashboard
-        const destination = user.role === 'owner' ? '/owner' : '/employee';
-        navigate(destination, { replace: true });
-      } else {
-        // Redirect to login
-        navigate('/login', { replace: true });
-      }
-    }
-  }, [isAuthenticated, user, isLoading, navigate]);
-
-  // Show loading while checking
+  // Show loading only during initial auth check
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -37,7 +44,72 @@ function RootRedirect() {
     );
   }
 
-  return null;
+  return (
+    <Routes>
+      {/* Public Routes - redirect if already authenticated */}
+      <Route 
+        path="/login" 
+        element={
+          isAuthenticated && user ? (
+            <Navigate to={user.role === 'owner' ? '/owner' : '/employee'} replace />
+          ) : (
+            <Login />
+          )
+        } 
+      />
+      <Route 
+        path="/register" 
+        element={
+          isAuthenticated && user ? (
+            <Navigate to={user.role === 'owner' ? '/owner' : '/employee'} replace />
+          ) : (
+            <Register />
+          )
+        } 
+      />
+      
+      {/* Email Verification Routes - Public */}
+      <Route path="/verify-email" element={<EmailVerification />} />
+      <Route path="/resend-verification" element={<ResendVerification />} />
+      
+      {/* Password Reset Routes - Public */}
+      <Route path="/password-reset-request" element={<PasswordResetRequest />} />
+      <Route path="/reset-password" element={<PasswordReset />} />
+      
+      {/* Protected Routes with role guards */}
+      <Route 
+        path="/owner" 
+        element={
+          <RoleGuard requiredRole="owner">
+            <OwnerDashboard />
+          </RoleGuard>
+        } 
+      />
+      <Route 
+        path="/employee" 
+        element={
+          <RoleGuard requiredRole="employee">
+            <EmployeeDashboard />
+          </RoleGuard>
+        } 
+      />
+      
+      {/* Root Route - redirect to register by default */}
+      <Route 
+        path="/" 
+        element={
+          !isAuthenticated || !user ? (
+            <Navigate to="/register" replace />
+          ) : (
+            <Navigate to={user.role === 'owner' ? '/owner' : '/employee'} replace />
+          )
+        } 
+      />
+      
+      {/* Catch all - redirect to root */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
 }
 
 function App() {
@@ -45,22 +117,7 @@ function App() {
     <AuthProvider>
       <AppProvider>
         <Router>
-          <Routes>
-            {/* Public Route */}
-            <Route path="/login" element={<Login />} />
-            
-            {/* Protected Routes */}
-            <Route element={<ProtectedRoute />}>
-              <Route path="/owner" element={<OwnerDashboard />} />
-              <Route path="/employee" element={<EmployeeDashboard />} />
-            </Route>
-            
-            {/* Root - redirect based on auth status */}
-            <Route path="/" element={<RootRedirect />} />
-            
-            {/* Catch all - redirect to root */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+          <AppRoutes />
         </Router>
       </AppProvider>
     </AuthProvider>

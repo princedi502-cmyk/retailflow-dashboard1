@@ -28,3 +28,10 @@ class OrderResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class BasePurchaseOrder(BaseModel):
+    id: str
+    supplier_id: str
+    
+class CreatePurchaseOrder(BasePurchaseOrder):
+    name: str

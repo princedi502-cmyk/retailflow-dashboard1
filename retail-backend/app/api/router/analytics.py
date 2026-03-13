@@ -1,14 +1,20 @@
 from bson import ObjectId
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query, Path, Request
 from app.db.mongodb import db_manager
 from app.api.router.dependency import get_current_user, require_employee, require_owner
+from app.core.rate_limit import limiter
 from datetime import datetime, timezone, timedelta
+import re
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
 @router.get("/revenue")
-async def total_revenue(user=Depends(require_owner)):
+@limiter.limit("100/minute")
+async def total_revenue(
+    request: Request,
+    user=Depends(require_owner)
+):
     """Total all-time revenue."""
     order_collection = db_manager.db["orders"]
 
@@ -30,14 +36,20 @@ async def total_revenue(user=Depends(require_owner)):
 
 
 @router.get("/orders-count")
-async def total_orders(user=Depends(get_current_user)):
+async def total_orders(
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum number of orders to count"),
+    user=Depends(get_current_user)
+):
     order_collection = db_manager.db["orders"]
-    count = await order_collection.count_documents({})
+    count = await order_collection.count_documents({}, limit=limit)
     return {"total_orders": count}
 
 
 @router.get("/top-products")
-async def top_products(user=Depends(get_current_user)):
+async def top_products(
+    limit: int = Query(5, ge=1, le=50, description="Number of top products to return"),
+    user=Depends(get_current_user)
+):
     order_collection = db_manager.db["orders"]
 
     pipeline = [
@@ -57,7 +69,7 @@ async def top_products(user=Depends(get_current_user)):
             }
         },
         {"$sort": {"total_sold": -1}},
-        {"$limit": 5},
+        {"$limit": limit},
         {
             "$lookup": {
                 "from": "products",
@@ -78,12 +90,15 @@ async def top_products(user=Depends(get_current_user)):
         }
     ]
 
-    result = await order_collection.aggregate(pipeline).to_list(5)
+    result = await order_collection.aggregate(pipeline).to_list(limit)
     return result
 
 
 @router.get("/worst-products")
-async def worst_products(user=Depends(get_current_user)):
+async def worst_products(
+    limit: int = Query(5, ge=1, le=50, description="Number of worst products to return"),
+    user=Depends(get_current_user)
+):
     order_collection = db_manager.db["orders"]
 
     pipeline = [
@@ -103,7 +118,7 @@ async def worst_products(user=Depends(get_current_user)):
             }
         },
         {"$sort": {"total_sold": 1}},
-        {"$limit": 5},
+        {"$limit": limit},
         {
             "$lookup": {
                 "from": "products",
@@ -124,18 +139,21 @@ async def worst_products(user=Depends(get_current_user)):
         }
     ]
 
-    result = await order_collection.aggregate(pipeline).to_list(5)
+    result = await order_collection.aggregate(pipeline).to_list(limit)
     return result
 
 
 @router.get("/sales-summary")
-async def sales_summary(user=Depends(get_current_user)):
+async def sales_summary(
+    days: int = Query(7, ge=1, le=365, description="Number of days to look back for weekly summary"),
+    user=Depends(get_current_user)
+):
     """Returns items sold today and this week."""
     order_collection = db_manager.db["orders"]
 
     now = datetime.now(timezone.utc)
     today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
-    week_start = today_start - timedelta(days=today_start.weekday())
+    week_start = today_start - timedelta(days=min(days, today_start.weekday()))
 
     pipeline = [
         {"$unwind": "$items"},
@@ -179,12 +197,16 @@ async def sales_summary(user=Depends(get_current_user)):
 
 
 @router.get("/low-stock-products")
-async def low_stock_products(user=Depends(get_current_user)):
+async def low_stock_products(
+    threshold: int = Query(10, ge=0, le=1000, description="Low stock threshold"),
+    limit: int = Query(50, ge=1, le=500, description="Maximum number of products to return"),
+    user=Depends(get_current_user)
+):
     product_collection = db_manager.db["products"]
 
     pipeline = [
         {
-            "$match": {"stock": {"$lt": 10}}
+            "$match": {"stock": {"$lt": threshold}}
         },
         {
             "$project": {
@@ -197,16 +219,37 @@ async def low_stock_products(user=Depends(get_current_user)):
     ]
 
     cursor = product_collection.aggregate(pipeline)
-    products = await cursor.to_list(length=50)
+    products = await cursor.to_list(length=limit)
     return products
 
 
 @router.get("/monthly-revenue")
-async def monthly_revenue(user=Depends(get_current_user)):
+async def monthly_revenue(
+    year: int = Query(None, ge=2020, le=2030, description="Year to filter revenue data"),
+    user=Depends(get_current_user)
+):
     """Returns array of 12 revenue values indexed by month (0=Jan)."""
     order_collection = db_manager.db["orders"]
+    
+    # Default to current year if not provided
+    if year is None:
+        year = datetime.now().year
+    
+    # Validate year format
+    if not re.match(r'^\d{4}$', str(year)):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid year format"
+        )
 
     pipeline = [
+        {
+            "$match": {
+                "$expr": {
+                    "$eq": [{"$year": {"$toDate": "$created_at"}}, year]
+                }
+            }
+        },
         {
             "$project": {
                 "month": {"$month": {"$toDate": "$created_at"}},
@@ -235,7 +278,10 @@ async def monthly_revenue(user=Depends(get_current_user)):
 
 
 @router.get("/category-sales")
-async def category_sales(user=Depends(get_current_user)):
+async def category_sales(
+    limit: int = Query(20, ge=1, le=100, description="Maximum number of categories to return"),
+    user=Depends(get_current_user)
+):
     """
     FIX: Was grouping by $category and summing $total — neither exists on orders.
     Now unwinds items, looks up product for category, and multiplies qty * price.
@@ -270,7 +316,8 @@ async def category_sales(user=Depends(get_current_user)):
                 }
             }
         },
-        {"$sort": {"revenue": -1}}
+        {"$sort": {"revenue": -1}},
+        {"$limit": limit}
     ]
 
     result = await order_collection.aggregate(pipeline).to_list(length=None)
@@ -282,12 +329,19 @@ async def category_sales(user=Depends(get_current_user)):
 
 
 @router.get("/items-sold")
-async def items_sold(user=Depends(get_current_user)):
+async def items_sold(
+    months: int = Query(1, ge=1, le=24, description="Number of months to look back"),
+    user=Depends(get_current_user)
+):
     """Items sold in the current calendar month."""
     sales_collection = db_manager.db["orders"]
 
     now = datetime.now(timezone.utc)
     start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+    
+    # Adjust start date based on months parameter
+    if months > 1:
+        start = start - timedelta(days=30 * (months - 1))
 
     pipeline = [
         {
@@ -309,7 +363,9 @@ async def items_sold(user=Depends(get_current_user)):
 
 
 @router.get("/this-month")
-async def this_month(user=Depends(get_current_user)):
+async def this_month(
+    user=Depends(get_current_user)
+):
     """
     FIX: Was incomplete/missing. Returns this month's revenue and items sold.
     This is the single endpoint the dashboard KPI cards should use.
@@ -349,7 +405,12 @@ async def this_month(user=Depends(get_current_user)):
     }
 
 @router.get("/sales-by-employee")
-async def sales_by_employee(user=Depends(require_owner)):
+@limiter.limit("50/minute")
+async def sales_by_employee(
+    request: Request,
+    limit: int = Query(50, ge=1, le=200, description="Maximum number of employees to return"),
+    user=Depends(require_owner)
+):
     order_collection = db_manager.db["orders"]
     user_collection = db_manager.db["users"]
     pipeline = [
@@ -409,14 +470,20 @@ async def sales_by_employee(user=Depends(require_owner)):
         }
     },
 
-    {"$sort": {"total_revenue": -1}}
+    {"$sort": {"total_revenue": -1}},
+    {"$limit": limit}
 ]
 
-    result = await order_collection.aggregate(pipeline).to_list(None)
+    result = await order_collection.aggregate(pipeline).to_list(limit)
     return result
 
 @router.get("/top-product")
-async def get_top_product(user= Depends(require_owner)):
+@limiter.limit("80/minute")
+async def get_top_product(
+    request: Request,
+    limit: int = Query(1, ge=1, le=10, description="Number of top products to return"),
+    user=Depends(require_owner)
+):
     order_collection = db_manager.db["orders"]
     product_collection = db_manager.db["products"]
 
@@ -464,15 +531,21 @@ async def get_top_product(user= Depends(require_owner)):
 
         {"$sort": {"total_revenue": -1}}
     ]
-    result = await order_collection.aggregate(pipeline).to_list(1)
+    result = await order_collection.aggregate(pipeline).to_list(limit)
     return result
 
 
 @router.get("/unsold-products")
-async def unsold_products(user =Depends(require_owner)):
+@limiter.limit("40/minute")
+async def unsold_products(
+    request: Request,
+    days: int = Query(30, ge=1, le=365, description="Number of days to look back"),
+    limit: int = Query(100, ge=1, le=500, description="Maximum number of products to return"),
+    user=Depends(require_owner)
+):
     product_collection = db_manager.db["products"]
 
-    days_ago = datetime.now(timezone.utc) - timedelta(days=1)
+    days_ago = datetime.now(timezone.utc) - timedelta(days=days)
 
     pipeline = [
         {
@@ -515,7 +588,7 @@ async def unsold_products(user =Depends(require_owner)):
         }
     ]
 
-    result = await product_collection.aggregate(pipeline).to_list(None)
+    result = await product_collection.aggregate(pipeline).to_list(limit)
     return result
 
 

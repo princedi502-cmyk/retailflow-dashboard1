@@ -5,7 +5,6 @@ class Database:
     client : AsyncIOMotorClient = None
     db = None
 
-
 db_manager = Database()
 
 async def connect_to_mongo():
@@ -17,4 +16,3 @@ async def close_mongo_connection():
     if db_manager.client:
         db_manager.client.close()
         print("MongoDB connection closed")
-

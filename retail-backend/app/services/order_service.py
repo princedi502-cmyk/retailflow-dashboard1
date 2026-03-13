@@ -15,12 +15,23 @@ async def create_order_service(order,user:dict):
 
     for item in order.items:
 
-        product = await product_collection.find_one({"barcode": item.barcode})
+        # Look up product by barcode or productId
+        if item.barcode:
+            product = await product_collection.find_one({"barcode": item.barcode})
+            product_identifier = item.barcode
+        elif item.productId:
+            product = await product_collection.find_one({"_id": item.productId})
+            product_identifier = item.productId
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Either barcode or productId must be provided for each item"
+            )
 
         if not product:
             raise HTTPException(
                 status_code=404,
-                detail=f"Product {item.barcode} not found"
+                detail=f"Product {product_identifier} not found"
             )
 
         if product["stock"] < item.quantity:
@@ -69,7 +80,20 @@ async def get_orders_service():
     async for order in order_collection.find():
 
         order["id"] = str(order["_id"])
+        
+        # Handle both user_id and employee_id fields
+        if "user_id" not in order and "employee_id" in order:
+            order["user_id"] = order["employee_id"]
+        elif "user_id" not in order and "employee_id" not in order:
+            # For legacy orders that don't have either field, provide a default
+            order["user_id"] = "legacy_user"
+        
+        # Remove the MongoDB _id field
+        del order["_id"]
 
         orders.append(order)
     
     return orders
+
+# async def create_purchase_orders():
+#     pass
