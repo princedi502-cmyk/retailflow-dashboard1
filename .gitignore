@@ -46,7 +46,6 @@ venv.bak/
 .env.development.local
 .env.test.local
 .env.production.local
-.env.production
 
 # Node.js
 node_modules
@@ -182,6 +181,10 @@ cython_debug/
 *.sublime-project
 *.sublime-workspace
 
+# AI Assistant Tools
+.qodo/
+.qodo-*/
+
 # Local development
 .local/
 local/
@@ -191,10 +194,10 @@ local/
 *.backup
 *.old
 
-# Test files (keep important ones)
-test_*.py
+# Development Scripts (remove from production)
+seed_*.py
+setup_*.py
 test_*.js
-test_*.sh
 debug_*.py
 generate_*.py
 
