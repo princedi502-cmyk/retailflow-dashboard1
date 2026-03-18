@@ -10,8 +10,3 @@
   from = "/*"
   to = "/index.html"
   status = 200
-
-[context.production.environment]
-  VITE_API_URL = "https://retailflow-backend-production.up.railway.app"
-  VITE_ENV = "production"
-  VITE_VERSION = "1.0.0"
