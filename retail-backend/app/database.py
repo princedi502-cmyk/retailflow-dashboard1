@@ -18,7 +18,7 @@ client = MongoClient(
     MONGO_URL, 
     maxPoolSize=pool_options.max_pool_size,
     minPoolSize=pool_options.min_pool_size,
-    maxIdleTimeMS=pool_options.max_idle_time_seconds * 1000,  # Convert to milliseconds
+        maxIdleTimeMS=pool_options.max_idle_time_seconds * 1000,  # Convert to milliseconds
     waitQueueTimeoutMS=pool_options.wait_queue_timeout * 1000,  # Convert to milliseconds
     connectTimeoutMS=int(pool_options.connect_timeout * 1000),  # Convert to milliseconds
     socketTimeoutMS=int(pool_options.socket_timeout * 1000),  # Convert to milliseconds
