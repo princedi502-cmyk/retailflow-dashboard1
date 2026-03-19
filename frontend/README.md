@@ -56,7 +56,7 @@ npm run build
 Create `.env.production` in the frontend folder:
 
 ```env
-VITE_API_URL=https://your-backend-api.com
+VITE_API_URL=https://retailflow-backend-ps8t.onrender.com
 VITE_ENV=production
 VITE_VERSION=1.0.0
 ```
