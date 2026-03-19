@@ -5,6 +5,9 @@
 
 [build.environment]
   NODE_VERSION = "18"
+  VITE_API_URL = "https://retailflow-backend-ps8t.onrender.com"
+  VITE_ENV = "production"
+  VITE_VERSION = "1.0.0"
 
 [[redirects]]
   from = "/*"
