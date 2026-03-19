@@ -1,6 +1,6 @@
-const CACHE_NAME = 'retailflow-v1';
-const STATIC_CACHE = 'retailflow-static-v1';
-const DYNAMIC_CACHE = 'retailflow-dynamic-v1';
+const CACHE_NAME = 'retailflow-v2';
+const STATIC_CACHE = 'retailflow-static-v2';
+const DYNAMIC_CACHE = 'retailflow-dynamic-v2';
 
 // Assets to cache immediately
 const STATIC_ASSETS = [
