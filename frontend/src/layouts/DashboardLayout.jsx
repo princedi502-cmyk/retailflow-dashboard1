@@ -27,8 +27,8 @@ const DashboardLayout = ({ children, role, pageTitle }) => {
           pageTitle={pageTitle} 
           onMenuClick={() => setSidebarOpen(true)}
         />
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          <div className="max-w-screen-2xl mx-auto">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 lg:p-8">
+          <div className="w-full max-w-full">
             {children}
           </div>
         </main>

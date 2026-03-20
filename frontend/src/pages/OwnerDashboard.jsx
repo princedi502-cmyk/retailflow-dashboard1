@@ -348,7 +348,7 @@ const OwnerDashboard = () => {
       />
 
       {/* KPI */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-10">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-10">
         <KPICard title="This Month Revenue" value={revenue} icon="💰" prefix="₹" subtitle={wsConnected ? "🟢 Live" : "🔴 Offline"} />
         <KPICard title="Items Sold" value={itemsSold} icon="📦" subtitle={wsConnected ? "🟢 Live" : "🔴 Offline"} />
         <KPICard title="Low Stock Products" value={lowStockItems.length} icon="⚠️" subtitle={wsConnected ? "🟢 Live" : "🔴 Offline"} />
@@ -356,7 +356,7 @@ const OwnerDashboard = () => {
       </div>
 
       {/* CHARTS */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-10">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-10">
         <Suspense fallback={<ChartLoader />}>
           <ChartCard title="Monthly Revenue">
             <LineChart
