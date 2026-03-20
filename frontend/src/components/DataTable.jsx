@@ -4,7 +4,7 @@ const DataTable = ({ title, columns, data, showImage = false }) => {
   return (
     <div className="card p-4 sm:p-6">
       <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-4 sm:mb-5">{title}</h3>
-      <div className="overflow-x-auto -mx-4 sm:-mx-6">
+      <div className="overflow-x-auto -mx-4 sm:-mx-6 hidden sm:block">
         <div className="inline-block min-w-full align-middle">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
