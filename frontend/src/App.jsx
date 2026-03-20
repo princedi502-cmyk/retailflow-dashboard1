@@ -18,10 +18,13 @@ const PasswordReset = lazyWithTracking(() => import('./pages/PasswordReset'), 'p
 
 // Loading component for lazy loaded routes
 const RouteLoader = () => (
-  <div className="min-h-screen flex items-center justify-center">
+  <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-blue-50/20 to-gray-50">
     <div className="text-center">
-      <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-      <p className="mt-4 text-gray-600">Loading...</p>
+      <div className="relative">
+        <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+        <div className="absolute inset-0 inline-block animate-ping rounded-full h-12 w-12 border-2 border-primary-200 opacity-75"></div>
+      </div>
+      <p className="mt-4 text-gray-600 font-medium animate-pulse">Loading amazing experience...</p>
     </div>
   </div>
 );
@@ -50,10 +53,18 @@ function AppRoutes() {
   // Show loading only during initial auth check
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-blue-50/20 to-gray-50">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <div className="relative">
+            <div className="inline-block animate-spin rounded-full h-16 w-16 border-b-2 border-primary-600"></div>
+            <div className="absolute inset-0 inline-block animate-ping rounded-full h-16 w-16 border-2 border-primary-200 opacity-75"></div>
+          </div>
+          <p className="mt-6 text-gray-600 font-medium animate-pulse">Authenticating your experience...</p>
+          <div className="mt-4 flex justify-center space-x-1">
+            <div className="w-2 h-2 bg-primary-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+            <div className="w-2 h-2 bg-primary-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+            <div className="w-2 h-2 bg-primary-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+          </div>
         </div>
       </div>
     );
