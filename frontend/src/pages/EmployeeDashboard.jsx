@@ -366,7 +366,7 @@ useEffect(() => {
 
   return (
     <DashboardLayout role="employee" pageTitle="Employee Dashboard">
- <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+ <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
 
   <KPICard
     title="Items Sold Today"
@@ -390,10 +390,10 @@ useEffect(() => {
 
 </div>
 
-<div className="flex flex-wrap gap-4 mb-10">
+<div className="flex flex-wrap gap-2 sm:gap-4 mb-6 sm:mb-10">
   <button
     onClick={() => setShowBilling(!showBilling)}
-    className="btn btn-primary"
+    className="btn btn-primary text-sm sm:text-base px-3 sm:px-4 py-2 sm:py-2.5"
   >
     <span className="mr-2">{showBilling ? "📊" : "➕"}</span>
     {showBilling ? "Hide Billing" : "Create Bill"}
@@ -402,7 +402,7 @@ useEffect(() => {
   {showBilling && (
     <button
       onClick={() => setShowScanner(!showScanner)}
-      className="btn btn-secondary bg-indigo-600 text-white"
+      className="btn btn-secondary bg-indigo-600 text-white text-sm sm:text-base px-3 sm:px-4 py-2 sm:py-2.5"
     >
       <span className="mr-2">📷</span>
       {showScanner ? "Close Scanner" : "Scan Barcode"}
@@ -415,13 +415,13 @@ useEffect(() => {
     {showScanner && (
       <div className="card p-4 bg-white shadow-md max-w-md mx-auto">
         <div id="reader"></div>
-        <p className="text-center text-sm text-gray-500 mt-2">
+        <p className="text-center text-xs sm:text-sm text-gray-500 mt-2">
           Align barcode inside the box
         </p>
       </div>
     )}
 
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
       <ProductSelector products={products} />
       <Suspense fallback={<BillingLoader />}>
         <BillingCart onSaleComplete={handleSaleComplete} />
